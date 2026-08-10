@@ -156,7 +156,7 @@ app.get("/users", async (req, res) => {
         });
       }
         const collection = db.collection("users");
-        const users = await collection.find({role: {$in: ["superAdmin", "municipality"]}},
+        const users = await collection.find({role: {$in: ["user", "municipality"]}},
         {projection: {
           name: 1,
           email: 1,
@@ -191,7 +191,7 @@ app.put("/users/promote", async (req, res) => {
         }
 
         //the role options
-        const allowedRoles = ["user","SuperAdmin","municipality"];
+        const allowedRoles = ["user","municipality"];
         if (!allowedRoles.includes(role)) {
             return res.status(400).json({
             message: "Invalid role"
