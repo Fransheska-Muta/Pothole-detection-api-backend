@@ -2,8 +2,10 @@ require("dotenv").config();
 const cors = require("cors");
 const express = require("express");
 const axios = require("axios");
+const jwt = require("jsonwebtoken");
 const app = express();
 app.use(cors());
+
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
@@ -16,7 +18,7 @@ let db;
 
 // Function to connect to MongoDB
 async function connectToDatabase() {
-  console.log(uri);
+  // console.log(uri)
   client = new MongoClient("mongodb://mutafransheska45_db_user:CreateaPassword@ac-2knek11-shard-00-00.r0hpfpp.mongodb.net:27017,ac-2knek11-shard-00-01.r0hpfpp.mongodb.net:27017,ac-2knek11-shard-00-02.r0hpfpp.mongodb.net:27017/?ssl=true&replicaSet=atlas-wznptk-shard-0&authSource=admin&appName=Cluster0"); 
   await client.connect();
   db = client.db("PotholeDetection");
@@ -94,16 +96,56 @@ app.post("/signup", async (req, res) => {
 }
 });
 
-app.use(basicAuth);
+// Jwt middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).json({
+          message: "No token provided"
+        });
+    }
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+        return res.status(401).json({
+            message: "Invalid token"
+        });
+    }
+    try {
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET
+        );
 
-app.post("/login", async (req, res) => {
+        req.user = decoded;
+        next();
+    } catch (error) {
+        return res.status(403).json({
+            message: "Invalid or expired token"
+        });
+    }
+}
+
+app.post("/login",basicAuth, async (req, res) => {
+  const token = jwt.sign({
+    id: req.user._id,
+    email: req.user.email,
+    role: req.user.role
+  },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "1h"
+    }
+)
     res.json({
         id: req.user._id,
         name: req.user.name,
         email: req.user.email,
-        role: req.user.role
+        role: req.user.role,
+        token: token
     });
 });
+
+app.use(authenticateToken)
 
 // tHis is so that the superadmin can see all users but their password is removed for safety
 app.get("/users", async (req, res) => {
@@ -114,7 +156,7 @@ app.get("/users", async (req, res) => {
         });
       }
         const collection = db.collection("users");
-        const users = await collection.find({role: {$in: ["admin", "municipality"]}},
+        const users = await collection.find({role: {$in: ["superAdmin", "municipality"]}},
         {projection: {
           name: 1,
           email: 1,
@@ -149,7 +191,7 @@ app.put("/users/promote", async (req, res) => {
         }
 
         //the role options
-        const allowedRoles = ["user","admin","municipality"];
+        const allowedRoles = ["user","SuperAdmin","municipality"];
         if (!allowedRoles.includes(role)) {
             return res.status(400).json({
             message: "Invalid role"
