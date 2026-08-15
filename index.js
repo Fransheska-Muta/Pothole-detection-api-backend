@@ -156,7 +156,7 @@ app.get("/users", async (req, res) => {
         });
       }
         const collection = db.collection("users");
-        const users = await collection.find({role: {$in: ["user", "municipality"]}},
+        const users = await collection.find({role: {$in: ["municipality"]}},
         {projection: {
           name: 1,
           email: 1,
