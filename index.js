@@ -156,7 +156,7 @@ app.get("/users", async (req, res) => {
         });
       }
         const collection = db.collection("users");
-        const users = await collection.find({role: {$in: ["municipality"]}},
+        const users = await collection.find({role: {$in: ["municipality", "superAdmin"]}},
         {projection: {
           name: 1,
           email: 1,
@@ -218,11 +218,7 @@ app.put("/users/promote", async (req, res) => {
     });
   }
     res.json({message: "User promoted successfully",
-      user: { 
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: role}
+      user: {  id: user._id, name: user.name, email: user.email, role: role}
   });
     } catch (error) {
         console.error("Error promoting user:", error);
@@ -230,6 +226,48 @@ app.put("/users/promote", async (req, res) => {
         message: "Internal Server Error"
       });
     }
+});
+
+app.put("/users/demote", async (req, res) => {
+
+    try {
+        // only Super Admin can demote users so it checks for roles
+        if (req.user.role !== "superAdmin") {
+          return res.status(403).json({message: "Access Denied"});
+        }
+        const { email } = req.body;
+        if (!email) {
+          return res.status(400).json({message: "Email is required"});
+        }
+        const collection = db.collection("users");
+        // finding a user with the email
+        const user = await collection.findOne({email: email})
+
+        if (!user) {
+          return res.status(404).json({message: "User not found"});
+        }
+        // only superadmin and municipality users can be demoted
+        if ( user.role !== "superAdmin" && user.role !== "municipality") {
+          return res.status(400).json({message: "This user cannot be demoted"});
+        }
+        // put them back to being a normal user
+        const result = await collection.updateOne(
+          {email: email},
+          {$set: {role: "user"}}
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({message: "User not found"});
+        }
+        res.json({
+          message: "User demoted successfully",
+          user: { id: user._id, name: user.name, email: user.email, role: "user"}
+        });
+    } catch (error) {
+      console.error("Error demoting user:",error);
+      res.status(500).json({message: "Internal Server Error"});
+    }
+
 });
 
 // Endpoint to post location
