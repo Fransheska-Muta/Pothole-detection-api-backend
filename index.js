@@ -304,22 +304,24 @@ app.get("/locations", async (req, res) => {
 // Endpoint to post report
 app.post("/report", async (req, res) => {
     try {
-        const { location, severity, description } = req.body;
-        const collection = db.collection("reports");
-        const result = await collection.insertOne({
-            userId: req.user._id,
-            location,
-            severity,
-            description,
-            createdAt: new Date(),
-        });
-        res.status(201).json({ message: "Thank you for your report" });
+      const { location, severity, description} = req.body;
+      if (!location) {
+        return res.status(400).json({message: "Location is required"});
+      }
+      if (!severity) {
+        return res.status(400).json({message: "Severity is required"});
+      }
+      if (!description) {
+        return res.status(400).json({message: "Description is required"});
+      }
+      const collection = db.collection("reports");
+      const result = await collection.insertOne({ userId: req.user._id, location, severity, description, image: null, status: "Pending", createdAt: new Date()});
+      res.status(201).json({message: "Thank you for your report",reportId: result.insertedId});
     } catch (error) {
-        console.error("Error submitting report: ", error);
-        res.status(500).json({ message: "Internal Server Error" });
+      console.error( "Error submitting report:", error);
+      res.status(500).json({message: "Internal Server Error"});
     }
-});
-
+})
 
 //Endpoint to get reports
 app.get("/report", async (req, res) => {
