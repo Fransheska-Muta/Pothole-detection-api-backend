@@ -3,11 +3,23 @@ const cors = require("cors");
 const express = require("express");
 const axios = require("axios");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const path = require("path");
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
+
+const storage = multer.diskStorage({destination: function (req, file, cb) {cb(null, "uploads/");},
+  filename: function (req, file, cb) {
+  const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
+  cb(null, uniqueName);
+  }
+})
+
+const upload = multer({storage: storage})
+app.use("/uploads", express.static("uploads"));
 
 // MongoDB connection setup  
 const uri = process.env.MONGODB_URI;
@@ -302,7 +314,7 @@ app.get("/locations", async (req, res) => {
 });
 
 // Endpoint to post report
-app.post("/report", async (req, res) => {
+app.post("/report", upload.single("image"), async (req, res) => {
     try {
       const { location, severity, description} = req.body;
       if (!location) {
@@ -314,9 +326,11 @@ app.post("/report", async (req, res) => {
       if (!description) {
         return res.status(400).json({message: "Description is required"});
       }
+      if (!req.file) {return res.status(400).json({message: "Pothole image is required"});
+      }
       const collection = db.collection("reports");
-      const result = await collection.insertOne({ userId: req.user._id, location, severity, description, image: null, status: "Pending", createdAt: new Date()});
-      res.status(201).json({message: "Thank you for your report",reportId: result.insertedId});
+      const result = await collection.insertOne({ userId: req.user._id, location:location, severity:severity, description: description, image: req.file.filename,status: "Pending", createdAt: new Date()});
+      res.status(201).json({message: "Thank you for your report",reportId: result.insertedId, image: req.file.filename});
     } catch (error) {
       console.error( "Error submitting report:", error);
       res.status(500).json({message: "Internal Server Error"});
@@ -334,6 +348,20 @@ app.get("/report", async (req, res) => {
         res.status(500).json({ message: "Internal Server Error" });
     }
 });
+
+app.get("/municipality/reports", async (req, res) => {
+    try {
+      if ( req.user.role !== "municipality" && req.user.role !== "superAdmin") {
+        return res.status(403).json({message: "Access Denied"})
+      }
+    const collection = db.collection("reports");
+    const reports = await collection.find({}).sort({ createdAt: -1 }).toArray();
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching reports:",error)
+      res.status(500).json({message: "Internal Server Error"})
+    }
+})
 
 //Endpoint to get geocode data from OpenStreetMap Nominatim API
 app.get("/geocode", async (req, res) => {
