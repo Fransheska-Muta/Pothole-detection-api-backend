@@ -363,6 +363,35 @@ app.get("/municipality/reports", async (req, res) => {
     }
 })
 
+app.put( "/reports/:id/status",async (req, res) => {
+        try {
+            //only municipality and Super Admin can update report status
+          if ( req.user.role !== "municipality" && req.user.role !== "superAdmin") {
+            return res.status(403).json({message: "Access Denied"})
+          }
+          const { id } = req.params;
+          const { status } = req.body;
+          if (!status) {
+            return res.status(400).json({message: "Status is required"});
+          }
+          const allowedStatuses = ["Pending","In Progress","Resolved"]
+          if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({message: "Invalid status"})
+          }
+          const collection =db.collection("reports");
+          const result = await collection.updateOne({_id: new ObjectId(id)},{$set: { status: status, updatedAt: new Date()}})
+          if (result.matchedCount === 0) {
+            return res.status(404).json({message: "Report not found"});
+          }
+          res.json({message:"Report status updated successfully",status: status
+          })
+        } catch (error) {
+          console.error("Error updating report status:",error)
+          res.status(500).json({message: "Internal Server Error"})
+        }
+    }
+)
+
 //Endpoint to get geocode data from OpenStreetMap Nominatim API
 app.get("/geocode", async (req, res) => {
   try {
