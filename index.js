@@ -316,7 +316,7 @@ app.get("/locations", async (req, res) => {
 // Endpoint to post report
 app.post("/report", upload.single("image"), async (req, res) => {
     try {
-      const { location, severity, description} = req.body;
+      const { location, latitude, longitude,severity, description} = req.body;
       if (!location) {
         return res.status(400).json({message: "Location is required"});
       }
@@ -329,7 +329,7 @@ app.post("/report", upload.single("image"), async (req, res) => {
       if (!req.file) {return res.status(400).json({message: "Pothole image is required"});
       }
       const collection = db.collection("reports");
-      const result = await collection.insertOne({ userId: req.user._id, location:location, severity:severity, description: description, image: req.file.filename,status: "Pending", createdAt: new Date()});
+      const result = await collection.insertOne({ userId: req.user._id, location, latitude, longitude, severity, description, image: req.file.filename,status: "Pending", createdAt: new Date()});
       res.status(201).json({message: "Thank you for your report",reportId: result.insertedId, image: req.file.filename});
     } catch (error) {
       console.error( "Error submitting report:", error);
@@ -337,18 +337,19 @@ app.post("/report", upload.single("image"), async (req, res) => {
     }
 })
 
-//Endpoint to get reports
-app.get("/report", async (req, res) => {
-    try {
-        const collection = db.collection("reports");
-        const reports = await collection.find({ userId: req.user._id }).toArray();
-        res.json(reports);
-    } catch (error) {
-        console.error("Error fetching reports: ", error);
-        res.status(500).json({ message: "Internal Server Error" });
-    }
-});
+//Endpoint to get reports for userdashbaord only
+app.get("/reports", async (req, res) => {
+  try {
+    const collection =db.collection("reports")
+    const reports =await collection.find({}).sort({ createdAt: -1 }).toArray()
+    res.json(reports);
+  } catch (error) {
+    console.error("Error fetching reports:",error)
+    res.status(500).json({message: "Internal Server Error"})
+  }
+})
 
+// getting reports for special users
 app.get("/municipality/reports", async (req, res) => {
     try {
       if ( req.user.role !== "municipality" && req.user.role !== "superAdmin") {
@@ -364,32 +365,31 @@ app.get("/municipality/reports", async (req, res) => {
 })
 
 app.put( "/reports/:id/status",async (req, res) => {
-        try {
-            //only municipality and Super Admin can update report status
-          if ( req.user.role !== "municipality" && req.user.role !== "superAdmin") {
-            return res.status(403).json({message: "Access Denied"})
-          }
-          const { id } = req.params;
-          const { status } = req.body;
-          if (!status) {
-            return res.status(400).json({message: "Status is required"});
-          }
-          const allowedStatuses = ["Pending","In Progress","Resolved"]
-          if (!allowedStatuses.includes(status)) {
-            return res.status(400).json({message: "Invalid status"})
-          }
-          const collection =db.collection("reports");
-          const result = await collection.updateOne({_id: new ObjectId(id)},{$set: { status: status, updatedAt: new Date()}})
-          if (result.matchedCount === 0) {
-            return res.status(404).json({message: "Report not found"});
-          }
-          res.json({message:"Report status updated successfully",status: status
-          })
-        } catch (error) {
-          console.error("Error updating report status:",error)
-          res.status(500).json({message: "Internal Server Error"})
-        }
+  try {
+    //only municipality and Super Admin can update report status
+    if ( req.user.role !== "municipality" && req.user.role !== "superAdmin") {
+      return res.status(403).json({message: "Access Denied"})
     }
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({message: "Status is required"});
+    }
+    const allowedStatuses = ["Pending","In Progress","Resolved"]
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({message: "Invalid status"})
+    }
+    const collection =db.collection("reports");
+    const result = await collection.updateOne({_id: new ObjectId(id)},{$set: { status: status, updatedAt: new Date()}})
+    if (result.matchedCount === 0) {
+      return res.status(404).json({message: "Report not found"});
+    }
+    res.json({message:"Report status updated successfully",status: status
+    })
+  } catch (error) {
+    console.error("Error updating report status:",error)
+    res.status(500).json({message: "Internal Server Error"})
+  }}
 )
 
 //Endpoint to get geocode data from OpenStreetMap Nominatim API
