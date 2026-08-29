@@ -395,40 +395,56 @@ app.put( "/reports/:id/status",async (req, res) => {
 //Endpoint to get geocode data from OpenStreetMap Nominatim API
 app.get("/geocode", async (req, res) => {
   try {
-    const { address } = req.query;
-
+    const { address } = req.query
     if (!address) {
       return res.status(400).json({ message: "Address is required" });
     }
-
     const response = await axios.get(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json`,
-      {
-        headers: {
-          "User-Agent": "pothole-detection-app"
-        }
-      }
-    );  
-
+      {headers: {"User-Agent": "pothole-detection-app"}}
+    ) 
     if (response.data.length === 0) {
-      return res.status(404).json({ message: "Location not found" });
+      return res.status(404).json({ message: "Location not found" })
     }
-
-    const place = response.data[0];
-
-    res.json({
-      latitude: place.lat,
-      longitude: place.lon,
-      name: place.display_name
-    });
-    console.log(" openstreetmap is in use");
-
+    const place = response.data[0]
+    res.json({ latitude: place.lat, longitude: place.lon, name: place.display_name})
+    console.log("hiii openstreetmap is in use");
   } catch (error) {
     console.error("Error fetching geocode data:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
-});
+})
 
+app.get("/geocode/suggestions", async (req, res) => {
+  try {
+      const { address } = req.query;
+      console.log("Suggestion search:", address);
+      if (!address) {
+        return res.status(400).json({message: "Address is required"});
+      }
+      const response = await axios.get("https://nominatim.openstreetmap.org/search",{
+      params: {
+        q: address,
+        format: "json",
+        limit: 5
+      },
+      headers: {
+        "User-Agent": "pothole-detection-app"
+      }}
+  )
+  // console.log("Nominatim results:", response.data);
+  const suggestions = response.data.map((place) => ({
+    name: place.display_name,
+    latitude: place.lat,
+    longitude: place.lon
+    }));
+    console.log("Sending suggestions:", suggestions);
+    res.json(suggestions);
+  } catch (error) {
+    console.error("Error getting location suggestions:",error.response?.data || error.message)
+    res.status(500).json({message: "Unable to get location suggestions"})
+  }
+})
 
 app.listen(PORT, async () => {
   await connectToDatabase();
