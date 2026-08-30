@@ -70,70 +70,65 @@ async function basicAuth(req, res, next) {
 
 // Endpoint to handle user signup
 app.post("/signup", async (req, res) => {
-  try{
-    const user = req.body;
-  // validate user input
-  if(user.password.length < 8)
-    throw new Error("Password must be at least 8 characters long");
-  if(!user.email.includes("@"))
-    throw new Error("Invalid email format");
-  if(user.password !== user.confirmPassword)
-    throw new Error("Passwords do not match");
-  
-  // remove confirmPassword field before storing in database
-  delete user.confirmPassword;
-  
-  // Every users starts as a normal user
-  user.role = "user";
-
-  // encode password before storing, it means hiding the password before stroing it
-  user.password = base64.encode(user.password);
-
-  // add user to database
-  const collection = db.collection("users");
-  const result = await collection.insertOne({
-    ...user,
-    createdAt: new Date(),
-  });
-
-  res.status(201).json({
-    message: "Account created successfully",
-    userId: result.insertedId,
-  });
-}catch(error) {
-    console.error(error);
-    res.status(400).json({
-    message: error.message
-  });
-}
-});
+    try {
+      const user = req.body;
+      // validating the user input fields
+      if (!user.name || !user.name.trim()) {throw new Error("Name is required");}
+      if (!user.email || !user.email.includes("@")) {throw new Error("Invalid email format");}
+      if (!user.password || user.password.length < 8) {
+        throw new Error("Password must be at least 8 characters long")
+      }
+      if (user.password !== user.confirmPassword) {throw new Error("Passwords do not match");}
+      const collection = db.collection("users");
+      const existingUser = await collection.findOne({email: user.email})
+      if (existingUser) {
+        throw new Error("An account with this email already exists");
+      }
+      delete user.confirmPassword;
+      user.role = "user";
+      user.password = base64.encode(user.password);
+      const result = await collection.insertOne({ ...user, createdAt: new Date()})
+      const token = jwt.sign(
+          {
+            id: result.insertedId.toString(),
+            email: user.email,
+            role: user.role
+          },
+        process.env.JWT_SECRET,
+        {expiresIn: "2h"}
+      )
+      res.status(201).json({
+        id: result.insertedId.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        token: token
+      })
+  } catch (error) {
+    console.error("Signup error:", error);
+    res.status(400).json({message: error.message})
+  }
+})
 
 // Jwt middleware
 function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
     if (!authHeader) {
-        return res.status(401).json({
-          message: "No token provided"
-        });
+      return res.status(401).json({message: "No token provided"})
     }
     const token = authHeader.split(" ")[1];
     if (!token) {
-        return res.status(401).json({
-            message: "Invalid token"
-        });
+      return res.status(401).json({message: "Invalid token"});
     }
     try {
         const decoded = jwt.verify(
           token,
           process.env.JWT_SECRET
-        );
-
+        )
         req.user = decoded;
         next();
     } catch (error) {
-        return res.status(403).json({
-            message: "Invalid or expired token"
-        });
+      return res.status(403).json({message: "Invalid or expired token"})
     }
 }
 
@@ -145,7 +140,7 @@ app.post("/login",basicAuth, async (req, res) => {
   },
     process.env.JWT_SECRET,
     {
-      expiresIn: "1h"
+      expiresIn: "2h"
     }
 )
     res.json({
