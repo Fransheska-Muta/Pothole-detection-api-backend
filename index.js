@@ -5,13 +5,16 @@ const axios = require("axios");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
-const storage = multer.diskStorage({destination: function (req, file, cb) {cb(null, "uploads/");},
+const storage = multer.diskStorage({destination: function (req, file, cb) {cb(null, UPLOAD_DIR);},
   filename: function (req, file, cb) {
   const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
   cb(null, uniqueName);
@@ -19,8 +22,7 @@ const storage = multer.diskStorage({destination: function (req, file, cb) {cb(nu
 })
 
 const upload = multer({storage: storage})
-app.use("/uploads", express.static("uploads"));
-
+app.use("/uploads", express.static(UPLOAD_DIR))
 // MongoDB connection setup  
 const uri = process.env.MONGODB_URI;
 const { MongoClient, ObjectId} = require("mongodb");
@@ -31,9 +33,14 @@ let db;
 // Function to connect to MongoDB
 async function connectToDatabase() {
   // console.log(uri)
-  client = new MongoClient("mongodb://mutafransheska45_db_user:CreateaPassword@ac-2knek11-shard-00-00.r0hpfpp.mongodb.net:27017,ac-2knek11-shard-00-01.r0hpfpp.mongodb.net:27017,ac-2knek11-shard-00-02.r0hpfpp.mongodb.net:27017/?ssl=true&replicaSet=atlas-wznptk-shard-0&authSource=admin&appName=Cluster0"); 
+  client = new MongoClient(process.env.MONGODB_URI);
   await client.connect();
   db = client.db("PotholeDetection");
+}
+
+// fake database so i can test
+function setDb(database) {
+  db = database;
 }
 
 // Middleware for Basic Authentication
@@ -281,12 +288,20 @@ app.put("/users/demote", async (req, res) => {
 app.post("/locations", async (req, res) => {
     try {
         const { latitude, longitude } = req.body;
+        const lat = Number(latitude);
+        const lng = Number(longitude);
+        if (latitude == null || longitude == null || latitude === "" || longitude === "" || Number.isNaN(lat) || Number.isNaN(lng)) {
+          return res.status(400).json({ message: "Latitude and longitude are required and must be numbers" });
+        }
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          return res.status(400).json({ message: "Latitude or longitude is out of range" });
+        }
         const collection = db.collection("locations");
         const result = await collection.insertOne({
-            userId: req.user._id,
-            latitude,
-            longitude,
-            createdAt: new Date(),
+          userId: req.user.id,
+          latitude: lat,
+          longitude: lng,
+          createdAt: new Date(),
         });
         res.status(201).json({ message: "Location submitted successfully" });
     } catch (error) {
@@ -300,7 +315,7 @@ app.get("/locations", async (req, res) => {
     try {
         const {userId} = req.query;
         const collection = db.collection("locations");
-        const locations = await collection.find({ userId: req.user._id }).toArray();
+        const locations = await collection.find({ userId: req.user.id }).toArray();
         res.json(locations);
     } catch (error) {
         console.error("Error fetching locations: ", error);
@@ -324,7 +339,7 @@ app.post("/report", upload.single("image"), async (req, res) => {
       if (!req.file) {return res.status(400).json({message: "Pothole image is required"});
       }
       const collection = db.collection("reports");
-      const result = await collection.insertOne({ userId: req.user._id, location, latitude, longitude, severity, description, image: req.file.filename,status: "Pending", createdAt: new Date()});
+      const result = await collection.insertOne({ userId: req.user.id, location, latitude, longitude, severity, description, image: req.file.filename,status: "Pending", createdAt: new Date()});
       res.status(201).json({message: "Thank you for your report",reportId: result.insertedId, image: req.file.filename});
     } catch (error) {
       console.error( "Error submitting report:", error);
@@ -441,7 +456,11 @@ app.get("/geocode/suggestions", async (req, res) => {
   }
 })
 
-app.listen(PORT, async () => {
-  await connectToDatabase();
-  console.log(`Server is running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    await connectToDatabase();
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
+
+module.exports = { app, setDb };
