@@ -6,6 +6,8 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const cloudinary = require("cloudinary").v2; // configured automatically from the CLOUDINARY_URL env var
+const USE_CLOUDINARY = !!process.env.CLOUDINARY_URL;
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const app = express();
@@ -338,9 +340,17 @@ app.post("/report", upload.single("image"), async (req, res) => {
       }
       if (!req.file) {return res.status(400).json({message: "Pothole image is required"});
       }
+      // With Cloudinary configured, store the photo there and keep its permanent URL.
+      // Otherwise fall back to the local uploads folder (used by tests / local dev).
+      let image = req.file.filename;
+      if (USE_CLOUDINARY) {
+        const uploaded = await cloudinary.uploader.upload(req.file.path, {folder: "pothole-reports"});
+        image = uploaded.secure_url;
+        fs.unlink(req.file.path, () => {});
+      }
       const collection = db.collection("reports");
-      const result = await collection.insertOne({ userId: req.user.id, location, latitude, longitude, severity, description, image: req.file.filename,status: "Pending", createdAt: new Date()});
-      res.status(201).json({message: "Thank you for your report",reportId: result.insertedId, image: req.file.filename});
+      const result = await collection.insertOne({ userId: req.user.id, location, latitude, longitude, severity, description, image,status: "Pending", createdAt: new Date()});
+      res.status(201).json({message: "Thank you for your report",reportId: result.insertedId, image});
     } catch (error) {
       console.error( "Error submitting report:", error);
       res.status(500).json({message: "Internal Server Error"});
